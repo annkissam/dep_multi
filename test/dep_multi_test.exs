@@ -1,6 +1,6 @@
-defmodule DepServerTest do
+defmodule DepMultiTest do
   use ExUnit.Case
-  doctest DepServer
+  doctest DepMulti
 
   defmodule Counter do
     use GenServer
@@ -39,36 +39,35 @@ defmodule DepServerTest do
     # NOTE: the fn will only have dependencies in it? Something from the graph
     # only present depednendency (and their parents) when calling the function
 
-    {:ok, results} = DepServer.new()
-      |> DepServer.add(:step_1, [], fn (_) ->
+    {:ok, results} = DepMulti.new()
+      |> DepMulti.run(:step_1, [], fn (_) ->
         :timer.sleep(100)
         Counter.add(counter, "1")
       end)
-      |> DepServer.add(:step_2a, [:step_1], fn (%{step_1: str}) ->
+      |> DepMulti.run(:step_2a, [:step_1], fn (%{step_1: str}) ->
         :timer.sleep(100)
         Counter.add(counter, "#{str}2A")
       end)
-      |> DepServer.add(:step_2b, [:step_1], fn (%{step_1: str}) ->
+      |> DepMulti.run(:step_2b, [:step_1], fn (%{step_1: str}) ->
         :timer.sleep(50)
         Counter.add(counter, "#{str}2B")
       end)
-      |> DepServer.add(:step_3, [:step_2a, :step_2b], fn (_) ->
+      |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn (_) ->
         :timer.sleep(100)
         Counter.add(counter, "3")
       end)
-      |> DepServer.add(:step_4, [], fn (_) ->
-        :timer.sleep(50)
-        Counter.add(counter, "4")
-      end)
-      |> DepServer.exec()
+      |> DepMulti.run(:step_4, [], Counter, :add, [4])
+      |> DepMulti.execute()
 
-    expect(results[:step_1]).to eq("1")
-    expect(results[:step_2a]).to eq("12A")
-    expect(results[:step_2b]).to eq("12B")
-    expect(results[:step_3]).to eq("3")
-    expect(results[:step_4]).to eq("4")
+    # assert DepMulti.to_list(dep_multi)
 
-    expect(Counter.list(counter)).to eq(["4", "1", "12B", "12A", "3"])
+    assert results[:step_1] == "1"
+    assert results[:step_2a] == "12A"
+    assert results[:step_2b] == "12B"
+    assert results[:step_3] == "3"
+    assert results[:step_4] == "4"
+
+    assert Counter.list(counter) == ["4", "1", "12B", "12A", "3"]
 
     # expect it to take >= 300ms & < 400ms
   end
