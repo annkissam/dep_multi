@@ -56,7 +56,7 @@ defmodule DepMultiTest do
         :timer.sleep(100)
         Counter.add(counter, "3")
       end)
-      |> DepMulti.run(:step_4, [], Counter, :add, [4])
+      |> DepMulti.run(:step_4, [], Counter, :add, [counter, "4"])
       |> DepMulti.execute()
 
     # assert DepMulti.to_list(dep_multi)
@@ -71,4 +71,27 @@ defmodule DepMultiTest do
 
     # expect it to take >= 300ms & < 400ms
   end
+
+  test "raise on cyclic graph" do
+    counter = start_supervised(Counter)
+
+    assert_raise RuntimeError, "Cyclic Error", fn ->
+      DepMulti.new()
+        |> DepMulti.run(:step_1, [:step_2], Counter, :add, [counter, "1"])
+        |> DepMulti.run(:step_2, [:step_1], Counter, :add, [counter, "2"])
+        |> DepMulti.execute()
+    end
+  end
+
+  # Pending: Can we evaluate this before execution?
+  # test "changes only include dependencies" do
+  #   assert_raise RuntimeError, "~Pattern Match Error", fn ->
+  #     DepMulti.new()
+  #       |> DepMulti.run(:step_1, [], Counter, :add, [counter, "1"])
+  #       |> DepMulti.run(:step_2, [], fn (%{step_1: str}) ->
+  #         Counter.add(counter, "2")
+  #       end)
+  #       |> DepMulti.execute()
+  #   end
+  # end
 end

@@ -81,4 +81,34 @@ defmodule DepMulti do
     operations
     |> Enum.reverse
   end
+
+  @spec execute(t) :: {:ok, term} | {:error, term}
+  def execute(multi) do
+    operations = Enum.reverse(multi.operations)
+
+    validate_graph(operations)
+
+    # Validate graph
+
+    {:ok, %{}}
+  end
+
+  defp validate_graph(operations) do
+    graph = :digraph.new
+
+    Enum.each(operations, fn {name, dependencies, _operation} ->
+      :digraph.add_vertex(graph, name)
+
+      Enum.each(dependencies, fn dependency ->
+        :digraph.add_vertex(graph, dependency)
+        :digraph.add_edge(graph, dependency, name)
+      end)
+    end)
+
+    if :digraph_utils.is_acyclic(graph) do
+      :ok
+    else
+      raise "Cyclic Error"
+    end
+  end
 end
