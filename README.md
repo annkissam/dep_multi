@@ -19,3 +19,5 @@ Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_do
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at [https://hexdocs.pm/dep_multi](https://hexdocs.pm/dep_multi).
 
+[Syntax Inspiration - Ecto.Multi](https://hexdocs.pm/ecto/Ecto.Multi.html)
+[Supervsor Strategy](https://www.thegreatcodeadventure.com/how-we-used-elixirs-genservers-dynamic-supervisors-to-build-concurrent-fault-tolerant-workflows/)
