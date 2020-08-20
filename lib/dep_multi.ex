@@ -8,7 +8,7 @@ defmodule DepMulti do
 
   @type changes :: map
   @type run :: ((changes) -> {:ok | :error, any}) | {module, atom, [any]}
-  @type dependencies :: [name]
+  @type dependencies :: list(name)
   @typep operation :: {:run, run}
   @typep operations :: [{name, dependencies, operation}]
   @typep names :: MapSet.t
@@ -55,22 +55,22 @@ defmodule DepMulti do
   receives the repo as the first argument, and the changes so far as the
   second argument (prepended to those passed in the call to the function).
   """
-  @spec run(t, name, module, dependencies, function, args) :: t when function: atom, args: [any]
+  @spec run(t, name, dependencies, module, function, args) :: t when function: atom, args: [any]
   def run(multi, name, dependencies, mod, fun, args)
       when is_atom(mod) and is_atom(fun) and is_list(args) do
     add_operation(multi, name, dependencies, {:run, {mod, fun, args}})
   end
 
-  @spec add_operation(t, name, dependencies, map) :: t
+  @spec add_operation(t, name, dependencies, {:run, run}) :: t
   defp add_operation(%DepMulti{} = multi, name, dependencies, operation) do
     %{operations: operations, names: names} = multi
 
-    # if MapSet.member?(names, name) do
-    #   raise "#{inspect name} is already a member of the DepMulti: \n#{inspect multi}"
-    # else
-      %DepMulti{operations: [{name, dependencies, operation} | operations],
+    if MapSet.member?(names, name) do
+      raise "#{inspect name} is already a member of the DepMulti: \n#{inspect multi}"
+    else
+      %{multi | operations: [{name, dependencies, operation} | operations],
                 names: MapSet.put(names, name)}
-    # end
+    end
   end
 
   @doc """
