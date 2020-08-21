@@ -5,9 +5,14 @@ defmodule DepMulti.Application do
 
   def start(_type, _args) do
     children = [
+      DepMulti.Server,
       %{
         id: DepMulti.WorkerSupervisor,
         start: {DepMulti.WorkerSupervisor, :start_link, [[]]}
+      },
+      %{
+        id: DepMulti.RunnerSupervisor,
+        start: {DepMulti.RunnerSupervisor, :start_link, [[]]}
       }
     ]
 

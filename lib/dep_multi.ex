@@ -88,9 +88,7 @@ defmodule DepMulti do
 
     validate_graph(operations)
 
-    {:ok, pid} = DepMulti.WorkerSupervisor.start_work(operations)
-
-    {:ok, %{}}
+    DepMulti.Server.execute(operations)
   end
 
   defp validate_graph(operations) do
