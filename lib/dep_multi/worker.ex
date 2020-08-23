@@ -19,7 +19,7 @@ defmodule DepMulti.Worker do
       error: nil,
       pid: pid,
       ref: ref,
-      shutdown: true
+      shutdown: false
     }
 
     {:ok, state}
