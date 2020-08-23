@@ -16,8 +16,10 @@ defmodule DepMulti.Worker do
       blocked: operations,
       processing: [],
       success: %{},
+      error: nil,
       pid: pid,
-      ref: ref
+      ref: ref,
+      shutdown: true
     }
 
     {:ok, state}
@@ -37,9 +39,9 @@ defmodule DepMulti.Worker do
 
   def handle_info(:run, state) do
     {unblocked, blocked} =
-      Enum.split_with(state[:blocked], fn {_name, dependencies, _operation} ->
+      Enum.split_with(state.blocked, fn {_name, dependencies, _operation} ->
         Enum.all?(dependencies, fn dependency ->
-          Enum.any?(state[:success], fn {name, _result} -> name == dependency end)
+          Enum.any?(state.success, fn {name, _result} -> name == dependency end)
         end)
       end)
 
@@ -53,14 +55,14 @@ defmodule DepMulti.Worker do
     state =
       state
       |> Map.put(:blocked, blocked)
-      |> Map.put(:processing, new_processing ++ state[:processing])
+      |> Map.put(:processing, new_processing ++ state.processing)
 
     {:noreply, state}
   end
 
   def handle_cast({:runner_success, runner_pid, runner_name, result}, state) do
     {completed, processing} =
-      Enum.split_with(state[:processing], fn {pid, name, _dependencies, _operation} ->
+      Enum.split_with(state.processing, fn {pid, name, _dependencies, _operation} ->
         runner_pid == pid && runner_name == name
       end)
 
@@ -75,20 +77,31 @@ defmodule DepMulti.Worker do
       |> Map.put(:success, success)
       |> Map.put(:processing, processing)
 
-    if Enum.empty?(state[:processing]) && Enum.empty?(state[:blocked]) do
-      GenServer.cast(state[:pid], {:response, state[:ref], {:ok, success}})
+    if Enum.empty?(state.processing) && Enum.empty?(state.blocked) do
+      case state.error do
+        {type, failed_operation, failed_value} ->
+          GenServer.cast(
+            state.pid,
+            {:response, state.ref, {type, failed_operation, failed_value, state.success}}
+          )
+
+        nil ->
+          GenServer.cast(state.pid, {:response, state.ref, {:ok, state.success}})
+      end
 
       {:stop, :normal, state}
     else
-      send(self(), :run)
+      unless state.error do
+        send(self(), :run)
+      end
 
       {:noreply, state}
     end
   end
 
   def handle_cast({:runner_failure, runner_pid, runner_name, error}, state) do
-    {failed, _processing} =
-      Enum.split_with(state[:processing], fn {pid, name, _dependencies, _operation} ->
+    {failed, processing} =
+      Enum.split_with(state.processing, fn {pid, name, _dependencies, _operation} ->
         runner_pid == pid && runner_name == name
       end)
 
@@ -96,18 +109,34 @@ defmodule DepMulti.Worker do
       raise "Unknown Runner: #{inspect(runner_name)}"
     end
 
-    # TODO: Terminate all processes
-    # Maybe this is an option? We could also let them complete but not report...
-    # update state
+    # Should this overwrite state.error?
 
-    GenServer.cast(state[:pid], {:response, state[:ref], {:error, error}})
+    state =
+      state
+      |> Map.put(:error, {:error, runner_name, error})
+      |> Map.put(:processing, processing)
 
-    {:stop, :normal, state}
+    if Enum.empty?(state.processing) do
+      GenServer.cast(
+        state.pid,
+        {:response, state.ref, {:error, runner_name, error, state.success}}
+      )
+
+      {:stop, :normal, state}
+    else
+      if state.shutdown do
+        Enum.each(state.processing, fn {pid, _name, _dependencies, _operation} ->
+          GenServer.stop(pid, :shutdown)
+        end)
+      end
+
+      {:noreply, state}
+    end
   end
 
   def handle_cast({:runner_terminate, runner_pid, runner_name, reason}, state) do
-    {terminated, _processing} =
-      Enum.split_with(state[:processing], fn {pid, name, _dependencies, _operation} ->
+    {terminated, processing} =
+      Enum.split_with(state.processing, fn {pid, name, _dependencies, _operation} ->
         runner_pid == pid && runner_name == name
       end)
 
@@ -115,24 +144,41 @@ defmodule DepMulti.Worker do
       raise "Unknown Runner: #{inspect(runner_name)}"
     end
 
-    # TODO: Terminate all processes
-    # Maybe this is an option? We could also let them complete but not report...
-    # update state
+    # Should this overwrite state.error?
 
-    GenServer.cast(state[:pid], {:response, state[:ref], {:error, reason}})
+    state =
+      state
+      |> Map.put(:error, {:terminate, runner_name, reason})
+      |> Map.put(:processing, processing)
 
-    {:stop, :normal, state}
+    if Enum.empty?(state.processing) do
+      GenServer.cast(
+        state.pid,
+        {:response, state.ref, {:terminate, runner_name, reason, state.success}}
+      )
+
+      {:stop, :normal, state}
+    else
+      if state.shutdown do
+        Enum.each(state.processing, fn {pid, _name, _dependencies, _operation} ->
+          GenServer.stop(pid, :shutdown)
+        end)
+      end
+
+      {:noreply, state}
+    end
   end
 
   def terminate(:normal, _state) do
     :ok
   end
 
-  def terminate(reason, %{pid: pid, ref: ref}) do
-    # TODO: Terminate all processes
-    # Maybe this is an option? We could also let them complete but not report...
+  def terminate(reason, %{pid: pid, ref: ref, processing: processing, success: success}) do
+    Enum.each(processing, fn {pid, _name, _dependencies, _operation} ->
+      GenServer.stop(pid, :shutdown)
+    end)
 
-    GenServer.cast(pid, {:response, ref, {:error, reason}})
+    GenServer.cast(pid, {:response, ref, {:terminate, nil, reason, success}})
 
     :ok
   end

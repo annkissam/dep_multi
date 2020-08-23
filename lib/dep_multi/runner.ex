@@ -64,6 +64,10 @@ defmodule DepMulti.Runner do
     :ok
   end
 
+  def terminate(:shutdown, _state) do
+    :ok
+  end
+
   def terminate(reason, %{worker_pid: worker_pid, name: name}) do
     DepMulti.Worker.runner_terminate(worker_pid, self(), name, reason)
 
