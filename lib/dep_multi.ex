@@ -7,11 +7,11 @@ defmodule DepMulti do
   defstruct operations: [], names: MapSet.new()
 
   @type changes :: map
-  @type run :: ((changes) -> {:ok | :error, any}) | {module, atom, [any]}
+  @type run :: (changes -> {:ok | :error, any}) | {module, atom, [any]}
   @type dependencies :: list(name)
   @typep operation :: {:run, run}
   @typep operations :: [{name, dependencies, operation}]
-  @typep names :: MapSet.t
+  @typep names :: MapSet.t()
   @type name :: any
   @type t :: %__MODULE__{operations: operations, names: names}
 
@@ -66,10 +66,13 @@ defmodule DepMulti do
     %{operations: operations, names: names} = multi
 
     if MapSet.member?(names, name) do
-      raise "#{inspect name} is already a member of the DepMulti: \n#{inspect multi}"
+      raise "#{inspect(name)} is already a member of the DepMulti: \n#{inspect(multi)}"
     else
-      %{multi | operations: [{name, dependencies, operation} | operations],
-                names: MapSet.put(names, name)}
+      %{
+        multi
+        | operations: [{name, dependencies, operation} | operations],
+          names: MapSet.put(names, name)
+      }
     end
   end
 
@@ -79,7 +82,7 @@ defmodule DepMulti do
   @spec to_list(t) :: [{name, term}]
   def to_list(%DepMulti{operations: operations}) do
     operations
-    |> Enum.reverse
+    |> Enum.reverse()
   end
 
   @spec execute(t) :: {:ok, term} | {:error, term}
@@ -92,7 +95,7 @@ defmodule DepMulti do
   end
 
   defp validate_graph(operations) do
-    graph = :digraph.new
+    graph = :digraph.new()
 
     Enum.each(operations, fn {name, dependencies, _operation} ->
       :digraph.add_vertex(graph, name)

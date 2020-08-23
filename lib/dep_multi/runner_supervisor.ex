@@ -10,7 +10,12 @@ defmodule DepMulti.RunnerSupervisor do
   end
 
   def execute(worker_pid, name, operation, changes) do
-    spec = %{id: DepMulti.Runner, start: {DepMulti.Runner, :start_link, [[worker_pid, name, operation, changes]]}, restart: :temporary}
+    spec = %{
+      id: DepMulti.Runner,
+      start: {DepMulti.Runner, :start_link, [[worker_pid, name, operation, changes]]},
+      restart: :temporary
+    }
+
     DynamicSupervisor.start_child(__MODULE__, spec)
   end
 end

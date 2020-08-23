@@ -34,25 +34,26 @@ defmodule DepMultiTest do
 
   # Question: If there's an error, do we force-quit the running processes, or wait?
   test "processes dependencies" do
-    counter = start_supervised(Counter)
+    {:ok, counter} = start_supervised(Counter)
 
     # NOTE: the fn will only have dependencies in it? Something from the graph
     # only present depednendency (and their parents) when calling the function
 
-    {:ok, results} = DepMulti.new()
-      |> DepMulti.run(:step_1, [], fn (_) ->
+    {:ok, results} =
+      DepMulti.new()
+      |> DepMulti.run(:step_1, [], fn _ ->
         :timer.sleep(100)
         Counter.add(counter, "1")
       end)
-      |> DepMulti.run(:step_2a, [:step_1], fn (%{step_1: str}) ->
+      |> DepMulti.run(:step_2a, [:step_1], fn %{step_1: str} ->
         :timer.sleep(100)
         Counter.add(counter, "#{str}2A")
       end)
-      |> DepMulti.run(:step_2b, [:step_1], fn (%{step_1: str}) ->
+      |> DepMulti.run(:step_2b, [:step_1], fn %{step_1: str} ->
         :timer.sleep(50)
         Counter.add(counter, "#{str}2B")
       end)
-      |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn (_) ->
+      |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn _ ->
         :timer.sleep(100)
         Counter.add(counter, "3")
       end)
@@ -77,9 +78,9 @@ defmodule DepMultiTest do
 
     assert_raise RuntimeError, "Cyclic Error", fn ->
       DepMulti.new()
-        |> DepMulti.run(:step_1, [:step_2], Counter, :add, [counter, "1"])
-        |> DepMulti.run(:step_2, [:step_1], Counter, :add, [counter, "2"])
-        |> DepMulti.execute()
+      |> DepMulti.run(:step_1, [:step_2], Counter, :add, [counter, "1"])
+      |> DepMulti.run(:step_2, [:step_1], Counter, :add, [counter, "2"])
+      |> DepMulti.execute()
     end
   end
 

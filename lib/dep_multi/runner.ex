@@ -9,13 +9,12 @@ defmodule DepMulti.Runner do
     send(self(), :run)
 
     {:ok,
-      %{
-        worker_pid: worker_pid,
-        name: name,
-        operation: operation,
-        changes: changes
-      }
-    }
+     %{
+       worker_pid: worker_pid,
+       name: name,
+       operation: operation,
+       changes: changes
+     }}
   end
 
   def success(runner_pid, result) do
@@ -32,6 +31,7 @@ defmodule DepMulti.Runner do
     case result do
       {:ok, result} ->
         success(self(), result)
+
       {:error, error} ->
         failure(self(), error)
     end
@@ -44,20 +44,24 @@ defmodule DepMulti.Runner do
   end
 
   defp run({:run, {mod, fun, args}}, _changes)
-      when is_atom(mod) and is_atom(fun) and is_list(args) do
+       when is_atom(mod) and is_atom(fun) and is_list(args) do
     apply(mod, fun, args)
   end
 
   def handle_cast({:success, result}, %{worker_pid: worker_pid, name: name} = state) do
     DepMulti.Worker.runner_success(worker_pid, self(), name, result)
 
-    {:stop, :done, state}
+    {:stop, :normal, state}
   end
 
   def handle_cast({:failure, error}, %{worker_pid: worker_pid, name: name} = state) do
     DepMulti.Worker.runner_failure(worker_pid, self(), name, error)
 
-    {:stop, :done, state}
+    {:stop, :normal, state}
+  end
+
+  def terminate(:normal, _state) do
+    :ok
   end
 
   def terminate(reason, %{worker_pid: worker_pid, name: name}) do
