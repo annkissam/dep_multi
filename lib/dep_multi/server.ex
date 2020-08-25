@@ -26,9 +26,7 @@ defmodule DepMulti.Server do
   def handle_cast({:response, ref, response}, state) do
     {from, state} = Map.pop(state, ref)
 
-    # if from do
     GenServer.reply(from, response)
-    # end
 
     {:noreply, state}
   end

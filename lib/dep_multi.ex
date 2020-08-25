@@ -1,6 +1,41 @@
 defmodule DepMulti do
   @moduledoc """
-  Documentation for DepMulti.
+  `DepMulti` is a data structure for performing dependant asynchronous
+  operations.
+
+  To demonstrate the problem, image you have three asynchronous tasks:
+
+  ##
+    [
+      Task.async(fn -> do_some_work() end),
+      Task.async(fn -> do_some_other_work() end),
+      Task.async(fn -> do_more_work() end),
+    ] |> Enum.map(&Task.await/1)
+
+  This works until you have a dependency / ordering issue. Say `do_more_work`
+  must happen after `do_some_work`. At that point, you'll need to name each
+  task and reference those names in other tasks that are dependant on them. If
+  those dependant task needs data from a previous task, you'll also want pass
+  those changes into the function.
+
+  The API to solve this issue is based on `Ecto.Multi`(https://hexdocs.pm/ecto/Ecto.Multi.html),
+  and specifically `run/3` and `run/5`. The differences are:
+  * The tasks are executed asychronously
+  * the method take a list of dependencies
+  * the changes passed into the function only include direct or indirect
+  dependencies
+
+  ## Example
+    iex>   DepMulti.new()
+    ...>   |> DepMulti.run(:step_1, [], fn _ ->
+    ...>     {:ok, 1}
+    ...>   end)
+    ...>   |> DepMulti.run(:step_2a, [:step_1], fn %{step_1: value} ->
+    ...>     {:ok, 2 + value}
+    ...>   end)
+    ...>   |> DepMulti.run(:step_2b, [:step_1], Map, :fetch, [:step_1])
+    ...>   |> DepMulti.execute()
+    {:ok, %{step_1: 1, step_2a: 3, step_2b: 1}}
   """
 
   alias __MODULE__
@@ -34,9 +69,11 @@ defmodule DepMulti do
   The function should return either `{:ok, value}` or `{:error, value}`,
   and receives the changes so far as the only argument.
 
+  NOTE: The changes will only include direct or indirect dependencies
+
   ## Example
 
-      DepMulti.run(multi, :write, [], fn %{image: image} ->
+      DepMulti.run(multi, :write, [:image], fn %{image: image} ->
         with :ok <- File.write(image.name, image.contents) do
           {:ok, nil}
         end
@@ -52,8 +89,10 @@ defmodule DepMulti do
 
   Similar to `run/4`, but allows to pass module name, function and arguments.
   The function should return either `{:ok, value}` or `{:error, value}`, and
-  receives the repo as the first argument, and the changes so far as the
-  second argument (prepended to those passed in the call to the function).
+  receives the rthe changes so far as the first argument (prepended to those
+  passed in the call to the function).
+
+  NOTE: The changes will only include direct or indirect dependencies
   """
   @spec run(t, name, dependencies, module, function, args) :: t when function: atom, args: [any]
   def run(multi, name, dependencies, mod, fun, args)
@@ -85,7 +124,7 @@ defmodule DepMulti do
     |> Enum.reverse()
   end
 
-  @spec execute(t) :: {:ok, term} | {:error, term}
+  @spec execute(t) :: {:ok, changes} | {:error, name, any, changes} | {:terminate, name | nil, any, changes}
   def execute(multi) do
     operations = Enum.reverse(multi.operations)
 

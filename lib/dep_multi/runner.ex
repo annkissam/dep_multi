@@ -43,9 +43,9 @@ defmodule DepMulti.Runner do
     run.(changes)
   end
 
-  defp run({:run, {mod, fun, args}}, _changes)
+  defp run({:run, {mod, fun, args}}, changes)
        when is_atom(mod) and is_atom(fun) and is_list(args) do
-    apply(mod, fun, args)
+    apply(mod, fun, [changes | args])
   end
 
   def handle_cast({:success, result}, %{worker_pid: worker_pid, name: name} = state) do
