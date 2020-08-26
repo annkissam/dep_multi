@@ -1,18 +1,18 @@
 defmodule DepMulti.Runner do
   use GenServer
 
-  def start_link([worker_pid, name, operation, changes]) do
-    GenServer.start_link(__MODULE__, [worker_pid, name, operation, changes])
+  def start_link([worker_pid, name, run_cmd, changes]) do
+    GenServer.start_link(__MODULE__, [worker_pid, name, run_cmd, changes])
   end
 
-  def init([worker_pid, name, operation, changes]) do
+  def init([worker_pid, name, run_cmd, changes]) do
     send(self(), :run)
 
     {:ok,
      %{
        worker_pid: worker_pid,
        name: name,
-       operation: operation,
+       run_cmd: run_cmd,
        changes: changes
      }}
   end
@@ -25,8 +25,8 @@ defmodule DepMulti.Runner do
     GenServer.cast(runner_pid, {:failure, error})
   end
 
-  def handle_info(:run, %{operation: operation, changes: changes} = state) do
-    result = run(operation, changes)
+  def handle_info(:run, %{run_cmd: run_cmd, changes: changes} = state) do
+    result = run(run_cmd, changes)
 
     case result do
       {:ok, result} ->
