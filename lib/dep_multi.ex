@@ -21,7 +21,7 @@ defmodule DepMulti do
   The API to solve this issue is based on `Ecto.Multi`(https://hexdocs.pm/ecto/Ecto.Multi.html),
   and specifically `run/3` and `run/5`. The differences are:
   * The tasks are executed asychronously
-  * the method take a list of dependencies
+  * the `run` methods take a list of dependencies
   * the changes passed into the function only include direct or indirect
   dependencies
 

@@ -12,6 +12,13 @@ defmodule DepMulti.Worker do
   def init([pid, ref, operations, shutdown]) do
     send(self(), :run)
 
+    # :digraph.delete/1
+    # Deletes digraph G. This call is important as digraphs are implemented with
+    # ETS. There is no garbage collection of ETS tables. However, the digraph is
+    # deleted if the process that created the digraph terminates
+    #
+    # For that reason, we create the graph in this temporary genserver that will
+    # terminate on completion / exception
     graph = build_graph(operations)
 
     state = %{
