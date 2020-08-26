@@ -21,7 +21,7 @@ defmodule DepMulti do
   The API to solve this issue is based on `Ecto.Multi`(https://hexdocs.pm/ecto/Ecto.Multi.html),
   and specifically `run/3` and `run/5`. The differences are:
   * The tasks are executed asychronously
-  * the `run` methods take a list of dependencies
+  * the `run` methods take a list of dependencies and a timeout
   * the changes passed into the function only include direct or indirect
   dependencies
 
@@ -30,10 +30,10 @@ defmodule DepMulti do
     ...>   |> DepMulti.run(:step_1, [], fn _ ->
     ...>     {:ok, 1}
     ...>   end)
-    ...>   |> DepMulti.run(:step_2a, [:step_1], fn %{step_1: value} ->
+    ...>   |> DepMulti.run(:step_2a, [dependencies: [:step_1], timeout: 5000], fn %{step_1: value} ->
     ...>     {:ok, 2 + value}
     ...>   end)
-    ...>   |> DepMulti.run(:step_2b, [:step_1], Map, :fetch, [:step_1])
+    ...>   |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Map, :fetch, [:step_1])
     ...>   |> DepMulti.execute()
     {:ok, %{step_1: 1, step_2a: 3, step_2b: 1}}
   """
@@ -44,8 +44,8 @@ defmodule DepMulti do
   @type changes :: map
   @type run :: (changes -> {:ok | :error, any}) | {module, atom, [any]}
   @type dependencies :: list(name)
-  @type operation :: {:run, run}
-  @type operations :: [{name, dependencies, operation}]
+  @type run_cmd :: {:run, run}
+  @type operations :: [DepMulti.Operation.t()]
   @type names :: MapSet.t()
   @type name :: any
   @type t :: %__MODULE__{operations: operations, names: names}
@@ -79,9 +79,9 @@ defmodule DepMulti do
         end
       end)
   """
-  @spec run(t, name, dependencies, run) :: t
-  def run(multi, name, dependencies, run) when is_function(run, 1) do
-    add_operation(multi, name, dependencies, {:run, run})
+  @spec run(t, name, keyword, run) :: t
+  def run(multi, name, opts, run) when is_function(run, 1) do
+    add_operation(multi, name, opts, {:run, run})
   end
 
   @doc """
@@ -94,25 +94,41 @@ defmodule DepMulti do
 
   NOTE: The changes will only include direct or indirect dependencies
   """
-  @spec run(t, name, dependencies, module, function, args) :: t when function: atom, args: [any]
-  def run(multi, name, dependencies, mod, fun, args)
+  @spec run(t, name, keyword, module, function, args) :: t when function: atom, args: [any]
+  def run(multi, name, opts, mod, fun, args)
       when is_atom(mod) and is_atom(fun) and is_list(args) do
-    add_operation(multi, name, dependencies, {:run, {mod, fun, args}})
+    add_operation(multi, name, opts, {:run, {mod, fun, args}})
   end
 
-  @spec add_operation(t, name, dependencies, {:run, run}) :: t
-  defp add_operation(%DepMulti{} = multi, name, dependencies, operation) do
+  @spec add_operation(t, name, keyword, {:run, run}) :: t
+  defp add_operation(%DepMulti{} = multi, name, opts, run_cmd) do
     %{operations: operations, names: names} = multi
 
     if MapSet.member?(names, name) do
       raise "#{inspect(name)} is already a member of the DepMulti: \n#{inspect(multi)}"
-    else
-      %{
-        multi
-        | operations: [{name, dependencies, operation} | operations],
-          names: MapSet.put(names, name)
-      }
     end
+
+    timeout = Keyword.get(opts, :timeout, :infinity)
+    dependencies = Keyword.get(opts, :dependencies, [])
+
+    unknown_keys = Keyword.keys(opts) -- [:timeout, :dependencies]
+
+    unless Enum.empty?(unknown_keys) do
+      raise "Unknown keys: #{inspect(unknown_keys)}"
+    end
+
+    operation = %DepMulti.Operation{
+      name: name,
+      dependencies: dependencies,
+      run_cmd: run_cmd,
+      timeout: timeout
+    }
+
+    %{
+      multi
+      | operations: [operation | operations],
+        names: MapSet.put(names, name)
+    }
   end
 
   @doc """

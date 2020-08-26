@@ -9,7 +9,7 @@ defmodule DepMulti.Server do
     {:ok, %{}}
   end
 
-  @spec execute(DepMulti.t(), keyword) ::
+  @spec execute([DepMulti.Operation.t()], keyword) ::
           {:ok, DepMulti.changes()}
           | {:error, DepMulti.name(), any, DepMulti.changes()}
           | {:terminate, DepMulti.name(), any, DepMulti.changes()}

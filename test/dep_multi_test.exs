@@ -65,12 +65,20 @@ defmodule DepMultiTest do
         :timer.sleep(100)
         Counter.add(counter, "1")
       end)
-      |> DepMulti.run(:step_2a, [:step_1], fn %{step_1: str} ->
+      |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn %{step_1: str} ->
         :timer.sleep(100)
         Counter.add(counter, "#{str}-2A")
       end)
-      |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
-      |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{step_1: _, step_2a: _, step_2b: _} ->
+      |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
+        counter,
+        :step_1,
+        "2B"
+      ])
+      |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
+                                                                          step_1: _,
+                                                                          step_2a: _,
+                                                                          step_2b: _
+                                                                        } ->
         :timer.sleep(100)
         Counter.add(counter, "3")
       end)
@@ -94,8 +102,16 @@ defmodule DepMultiTest do
   test "terminates on cyclic graph", %{counter: counter} do
     assert {:terminate, nil, {%RuntimeError{message: "Cyclic Error"}, _}, changes} =
              DepMulti.new()
-             |> DepMulti.run(:step_1, [:step_2], Counter, :fetch, [counter, :step_2, "1"])
-             |> DepMulti.run(:step_2, [:step_1], Counter, :fetch, [counter, :step_1, "2"])
+             |> DepMulti.run(:step_1, [dependencies: [:step_2]], Counter, :fetch, [
+               counter,
+               :step_2,
+               "1"
+             ])
+             |> DepMulti.run(:step_2, [dependencies: [:step_1]], Counter, :fetch, [
+               counter,
+               :step_1,
+               "2"
+             ])
              |> DepMulti.execute()
 
     assert changes == %{}
@@ -110,16 +126,20 @@ defmodule DepMultiTest do
                :timer.sleep(100)
                Counter.add(counter, "1")
              end)
-             |> DepMulti.run(:step_2a, [:step_1], fn _changes ->
+             |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
                :timer.sleep(100)
                Counter.add(counter, "ERROR")
              end)
-             |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
-             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{
-                                                                 step_1: _,
-                                                                 step_2a: _,
-                                                                 step_2b: _
-                                                               } ->
+             |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
+               counter,
+               :step_1,
+               "2B"
+             ])
+             |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
+                                                                                 step_1: _,
+                                                                                 step_2a: _,
+                                                                                 step_2b: _
+                                                                               } ->
                :timer.sleep(100)
                Counter.add(counter, "3")
              end)
@@ -141,16 +161,20 @@ defmodule DepMultiTest do
                :timer.sleep(100)
                Counter.add(counter, "1")
              end)
-             |> DepMulti.run(:step_2a, [:step_1], fn _changes ->
+             |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
                :timer.sleep(100)
                Counter.add(counter, "EXCEPTION")
              end)
-             |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
-             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{
-                                                                 step_1: _,
-                                                                 step_2a: _,
-                                                                 step_2b: _
-                                                               } ->
+             |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
+               counter,
+               :step_1,
+               "2B"
+             ])
+             |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
+                                                                                 step_1: _,
+                                                                                 step_2a: _,
+                                                                                 step_2b: _
+                                                                               } ->
                :timer.sleep(100)
                Counter.add(counter, "3")
              end)
@@ -172,17 +196,21 @@ defmodule DepMultiTest do
                :timer.sleep(100)
                Counter.add(counter, "1")
              end)
-             |> DepMulti.run(:step_2a, [:step_1], fn %{step_1: str} ->
+             |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn %{step_1: str} ->
                :timer.sleep(100)
                Counter.add(counter, "#{str}-2A")
              end)
-             |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
-             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{
-                                                                 step_1: _,
-                                                                 step_2a: _,
-                                                                 step_2b: _,
-                                                                 step_4: _
-                                                               } ->
+             |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
+               counter,
+               :step_1,
+               "2B"
+             ])
+             |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
+                                                                                 step_1: _,
+                                                                                 step_2a: _,
+                                                                                 step_2b: _,
+                                                                                 step_4: _
+                                                                               } ->
                :timer.sleep(100)
                Counter.add(counter, "3")
              end)
