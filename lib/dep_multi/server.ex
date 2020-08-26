@@ -9,18 +9,35 @@ defmodule DepMulti.Server do
     {:ok, %{}}
   end
 
-  def execute(operations, timeout \\ 5000) do
-    GenServer.call(__MODULE__, {:run, operations}, timeout)
+  @spec execute(DepMulti.t(), keyword) ::
+          {:ok, DepMulti.changes()}
+          | {:error, DepMulti.name(), any, DepMulti.changes()}
+          | {:terminate, DepMulti.name(), any, DepMulti.changes()}
+  def execute(operations, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 5000)
+    shutdown = Keyword.get(opts, :shutdown, false)
+
+    GenServer.call(__MODULE__, {:run, operations, shutdown}, timeout)
   end
 
-  def handle_call({:run, operations}, from, state) do
+  def handle_call({:run, operations, shutdown}, from, state) do
     ref = make_ref()
 
-    state = Map.put(state, ref, from)
+    # state = Map.put(state, ref, from)
+    #
+    # {:ok, _pid} = DepMulti.WorkerSupervisor.execute(self(), ref, operations, shutdown)
+    #
+    # {:noreply, state}
 
-    DepMulti.WorkerSupervisor.execute(self(), ref, operations)
+    case DepMulti.WorkerSupervisor.execute(self(), ref, operations, shutdown) do
+      {:ok, _pid} ->
+        state = Map.put(state, ref, from)
 
-    {:noreply, state}
+        {:noreply, state}
+
+      {:error, reason} ->
+        {:reply, {:terminate, nil, reason, %{}}, state}
+    end
   end
 
   def handle_cast({:response, ref, response}, state) do

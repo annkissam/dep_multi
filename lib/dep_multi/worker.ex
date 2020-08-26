@@ -9,8 +9,10 @@ defmodule DepMulti.Worker do
   # processing = [{pid, name, dependencies, {:run, run}}]
   # success = %{name, result}
 
-  def init([pid, ref, operations]) do
+  def init([pid, ref, operations, shutdown]) do
     send(self(), :run)
+
+    graph = build_graph(operations)
 
     state = %{
       blocked: operations,
@@ -19,8 +21,13 @@ defmodule DepMulti.Worker do
       error: nil,
       pid: pid,
       ref: ref,
-      shutdown: false
+      graph: graph,
+      shutdown: shutdown
     }
+
+    unless :digraph_utils.is_acyclic(graph) do
+      raise "Cyclic Error"
+    end
 
     {:ok, state}
   end
@@ -47,8 +54,12 @@ defmodule DepMulti.Worker do
 
     new_processing =
       Enum.map(unblocked, fn {name, dependencies, operation} ->
-        # TODO: Filter state.success by dependency tree
-        {:ok, pid} = DepMulti.RunnerSupervisor.execute(self(), name, operation, state.success)
+        all_dependencies = :digraph_utils.reachable_neighbours([name], state.graph)
+
+        # To prevent stochastic issues, only pass changes that are in the dependency graph
+        filtered_success = Map.take(state.success, all_dependencies)
+
+        {:ok, pid} = DepMulti.RunnerSupervisor.execute(self(), name, operation, filtered_success)
         {pid, name, dependencies, operation}
       end)
 
@@ -181,5 +192,20 @@ defmodule DepMulti.Worker do
     GenServer.cast(pid, {:response, ref, {:terminate, nil, reason, success}})
 
     :ok
+  end
+
+  defp build_graph(operations) do
+    graph = :digraph.new()
+
+    Enum.each(operations, fn {name, dependencies, _operation} ->
+      :digraph.add_vertex(graph, name)
+
+      Enum.each(dependencies, fn dependency ->
+        :digraph.add_vertex(graph, dependency)
+        :digraph.add_edge(graph, name, dependency)
+      end)
+    end)
+
+    graph
   end
 end

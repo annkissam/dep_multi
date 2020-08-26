@@ -91,16 +91,18 @@ defmodule DepMultiTest do
     # expect it to take >= 300ms & < 350ms
   end
 
-  test "raise on cyclic graph", %{counter: counter} do
-    assert_raise RuntimeError, "Cyclic Error", fn ->
-      DepMulti.new()
-      |> DepMulti.run(:step_1, [:step_2], Counter, :fetch, [counter, :step_2, "1"])
-      |> DepMulti.run(:step_2, [:step_1], Counter, :fetch, [counter, :step_1, "2"])
-      |> DepMulti.execute()
-    end
+  test "terminates on cyclic graph", %{counter: counter} do
+    assert {:terminate, nil, {%RuntimeError{message: "Cyclic Error"}, _}, changes} =
+             DepMulti.new()
+             |> DepMulti.run(:step_1, [:step_2], Counter, :fetch, [counter, :step_2, "1"])
+             |> DepMulti.run(:step_2, [:step_1], Counter, :fetch, [counter, :step_1, "2"])
+             |> DepMulti.execute()
+
+    assert changes == %{}
+
+    assert Counter.list(counter) == []
   end
 
-  # Question: If there's an error, do we force-quit the running processes, or wait?
   test "handles errors", %{counter: counter} do
     assert {:error, :step_2a, "Error thrown", changes} =
              DepMulti.new()
@@ -113,7 +115,11 @@ defmodule DepMultiTest do
                Counter.add(counter, "ERROR")
              end)
              |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
-             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{step_1: _, step_2a: _, step_2b: _} ->
+             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{
+                                                                 step_1: _,
+                                                                 step_2a: _,
+                                                                 step_2b: _
+                                                               } ->
                :timer.sleep(100)
                Counter.add(counter, "3")
              end)
@@ -140,7 +146,11 @@ defmodule DepMultiTest do
                Counter.add(counter, "EXCEPTION")
              end)
              |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
-             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{step_1: _, step_2a: _, step_2b: _} ->
+             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{
+                                                                 step_1: _,
+                                                                 step_2a: _,
+                                                                 step_2b: _
+                                                               } ->
                :timer.sleep(100)
                Counter.add(counter, "3")
              end)
@@ -155,27 +165,35 @@ defmodule DepMultiTest do
     assert Counter.list(counter) == ["4", "1", "1-2B"]
   end
 
-  # TODO
-  # test "only receives direct dependencies in changes", %{counter: counter} do
-  #   assert {:terminate, :step_3, {%RuntimeError{message: "Exception Thrown"}, _}, changes} =
-  #    DepMulti.new()
-  #    |> DepMulti.run(:step_1, [], fn _ ->
-  #      :timer.sleep(100)
-  #      Counter.add(counter, "1")
-  #    end)
-  #    |> DepMulti.run(:step_2a, [:step_1], fn %{step_1: str} ->
-  #      :timer.sleep(100)
-  #      Counter.add(counter, "#{str}-2A")
-  #    end)
-  #    |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
-  #    |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{step_1: _, step_2a: _, step_2b: _, step_4: _} ->
-  #      :timer.sleep(100)
-  #      Counter.add(counter, "3")
-  #    end)
-  #    |> DepMulti.run(:step_4, [], fn _ ->
-  #      :timer.sleep(50)
-  #      Counter.add(counter, "4")
-  #    end)
-  #    |> DepMulti.execute()
-  #  end
+  test "only receives direct dependencies in changes", %{counter: counter} do
+    assert {:terminate, :step_3, {:function_clause, _}, changes} =
+             DepMulti.new()
+             |> DepMulti.run(:step_1, [], fn _ ->
+               :timer.sleep(100)
+               Counter.add(counter, "1")
+             end)
+             |> DepMulti.run(:step_2a, [:step_1], fn %{step_1: str} ->
+               :timer.sleep(100)
+               Counter.add(counter, "#{str}-2A")
+             end)
+             |> DepMulti.run(:step_2b, [:step_1], Counter, :fetch, [counter, :step_1, "2B"])
+             |> DepMulti.run(:step_3, [:step_2a, :step_2b], fn %{
+                                                                 step_1: _,
+                                                                 step_2a: _,
+                                                                 step_2b: _,
+                                                                 step_4: _
+                                                               } ->
+               :timer.sleep(100)
+               Counter.add(counter, "3")
+             end)
+             |> DepMulti.run(:step_4, [], fn _ ->
+               :timer.sleep(50)
+               Counter.add(counter, "4")
+             end)
+             |> DepMulti.execute()
+
+    assert changes == %{step_1: "1", step_2b: "1-2B", step_2a: "1-2A", step_4: "4"}
+
+    assert Counter.list(counter) == ["4", "1", "1-2B", "1-2A"]
+  end
 end

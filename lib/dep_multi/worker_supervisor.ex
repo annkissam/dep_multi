@@ -9,10 +9,10 @@ defmodule DepMulti.WorkerSupervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  def execute(pid, ref, operations) do
+  def execute(pid, ref, operations, shutdown) do
     spec = %{
       id: DepMulti.Worker,
-      start: {DepMulti.Worker, :start_link, [[pid, ref, operations]]},
+      start: {DepMulti.Worker, :start_link, [[pid, ref, operations, shutdown]]},
       restart: :temporary
     }
 

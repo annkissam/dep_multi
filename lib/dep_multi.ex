@@ -44,9 +44,9 @@ defmodule DepMulti do
   @type changes :: map
   @type run :: (changes -> {:ok | :error, any}) | {module, atom, [any]}
   @type dependencies :: list(name)
-  @typep operation :: {:run, run}
-  @typep operations :: [{name, dependencies, operation}]
-  @typep names :: MapSet.t()
+  @type operation :: {:run, run}
+  @type operations :: [{name, dependencies, operation}]
+  @type names :: MapSet.t()
   @type name :: any
   @type t :: %__MODULE__{operations: operations, names: names}
 
@@ -118,37 +118,17 @@ defmodule DepMulti do
   @doc """
   Returns the list of operations stored in `multi`.
   """
-  @spec to_list(t) :: [{name, term}]
+  @spec to_list(t) :: operations
   def to_list(%DepMulti{operations: operations}) do
     operations
     |> Enum.reverse()
   end
 
-  @spec execute(t) :: {:ok, changes} | {:error, name, any, changes} | {:terminate, name | nil, any, changes}
-  def execute(multi) do
+  @spec execute(t, keyword) ::
+          {:ok, changes} | {:error, name, any, changes} | {:terminate, name, any, changes}
+  def execute(multi, opts \\ []) do
     operations = Enum.reverse(multi.operations)
 
-    validate_graph(operations)
-
-    DepMulti.Server.execute(operations)
-  end
-
-  defp validate_graph(operations) do
-    graph = :digraph.new()
-
-    Enum.each(operations, fn {name, dependencies, _operation} ->
-      :digraph.add_vertex(graph, name)
-
-      Enum.each(dependencies, fn dependency ->
-        :digraph.add_vertex(graph, dependency)
-        :digraph.add_edge(graph, dependency, name)
-      end)
-    end)
-
-    if :digraph_utils.is_acyclic(graph) do
-      :ok
-    else
-      raise "Cyclic Error"
-    end
+    DepMulti.Server.execute(operations, opts)
   end
 end
