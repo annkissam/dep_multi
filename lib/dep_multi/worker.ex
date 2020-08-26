@@ -9,7 +9,7 @@ defmodule DepMulti.Worker do
   # processing = [{pid, name, dependencies, {:run, run}}]
   # success = %{name, result}
 
-  def init([pid, ref, operations, shutdown]) do
+  def init([server_pid, ref, operations, shutdown]) do
     send(self(), :run)
 
     # :digraph.delete/1
@@ -26,7 +26,7 @@ defmodule DepMulti.Worker do
       processing: [],
       success: %{},
       error: nil,
-      pid: pid,
+      server_pid: server_pid,
       ref: ref,
       graph: graph,
       shutdown: shutdown
@@ -60,16 +60,29 @@ defmodule DepMulti.Worker do
       end)
 
     new_processing =
-      Enum.map(unblocked, fn %DepMulti.Operation{name: name, run_cmd: run_cmd} = operation ->
+      Enum.map(unblocked, fn %DepMulti.Operation{name: name, run_cmd: run_cmd, timeout: timeout} =
+                               operation ->
         all_dependencies = :digraph_utils.reachable_neighbours([name], state.graph)
 
         # To prevent stochastic issues, only pass changes that are in the dependency graph
         filtered_success = Map.take(state.success, all_dependencies)
 
-        {:ok, pid} = DepMulti.RunnerSupervisor.execute(self(), name, run_cmd, filtered_success)
-        # set timer w/ PID. Send to self. If already done, ignore, otherwise kill runner.
-        # :process.send_after
-        {pid, operation}
+        {:ok, runner_pid} =
+          DepMulti.RunnerSupervisor.execute(self(), name, run_cmd, filtered_success)
+
+        if timeout == :infinity do
+          %DepMulti.ProcessingOperation{runner_pid: runner_pid, operation: operation}
+        else
+          timeout_ref = make_ref()
+          timer_pid = Process.send_after(self(), {:timeout, timeout_ref}, timeout)
+
+          %DepMulti.ProcessingOperation{
+            runner_pid: runner_pid,
+            operation: operation,
+            timer_pid: timer_pid,
+            timeout_ref: timeout_ref
+          }
+        end
       end)
 
     state =
@@ -80,14 +93,41 @@ defmodule DepMulti.Worker do
     {:noreply, state}
   end
 
+  def handle_info({:timeout, timeout_ref}, state) do
+    {timed_out, processing} =
+      Enum.split_with(state.processing, fn %DepMulti.ProcessingOperation{timeout_ref: ref} ->
+        timeout_ref == ref
+      end)
+
+    state =
+      state
+      |> Map.put(:processing, processing)
+
+    if Enum.empty?(timed_out) do
+      # already processed, no need to timeout
+      {:noreply, state}
+    else
+      %DepMulti.ProcessingOperation{operation: %DepMulti.Operation{name: name}} =
+        List.first(timed_out)
+
+      {:stop, {:timeout, name}, state}
+    end
+  end
+
   def handle_cast({:runner_success, runner_pid, operation_name, result}, state) do
     {completed, processing} =
-      Enum.split_with(state.processing, fn {pid, _operation} ->
+      Enum.split_with(state.processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
         runner_pid == pid
       end)
 
     if Enum.empty?(completed) do
       raise "Unknown Runner: #{inspect(operation_name)}"
+    end
+
+    %DepMulti.ProcessingOperation{timer_pid: timer_pid} = List.first(completed)
+
+    if timer_pid do
+      :erlang.cancel_timer(timer_pid)
     end
 
     success = Map.put(state.success, operation_name, result)
@@ -101,13 +141,13 @@ defmodule DepMulti.Worker do
       case state.error do
         {type, failed_operation_name, failed_operation_result} ->
           GenServer.cast(
-            state.pid,
+            state.server_pid,
             {:response, state.ref,
              {type, failed_operation_name, failed_operation_result, state.success}}
           )
 
         nil ->
-          GenServer.cast(state.pid, {:response, state.ref, {:ok, state.success}})
+          GenServer.cast(state.server_pid, {:response, state.ref, {:ok, state.success}})
       end
 
       {:stop, :normal, state}
@@ -122,12 +162,18 @@ defmodule DepMulti.Worker do
 
   def handle_cast({:runner_failure, runner_pid, operation_name, error}, state) do
     {failed, processing} =
-      Enum.split_with(state.processing, fn {pid, _operation} ->
+      Enum.split_with(state.processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
         runner_pid == pid
       end)
 
     if Enum.empty?(failed) do
       raise "Unknown Runner: #{inspect(operation_name)}"
+    end
+
+    %DepMulti.ProcessingOperation{timer_pid: timer_pid} = List.first(failed)
+
+    if timer_pid do
+      :erlang.cancel_timer(timer_pid)
     end
 
     # Should this overwrite state.error?
@@ -139,7 +185,7 @@ defmodule DepMulti.Worker do
 
     if Enum.empty?(state.processing) do
       GenServer.cast(
-        state.pid,
+        state.server_pid,
         {:response, state.ref, {:error, operation_name, error, state.success}}
       )
 
@@ -157,12 +203,18 @@ defmodule DepMulti.Worker do
 
   def handle_cast({:runner_terminate, runner_pid, operation_name, reason}, state) do
     {terminated, processing} =
-      Enum.split_with(state.processing, fn {pid, _operation} ->
+      Enum.split_with(state.processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
         runner_pid == pid
       end)
 
     if Enum.empty?(terminated) do
       raise "Unknown Runner: #{inspect(operation_name)}"
+    end
+
+    %DepMulti.ProcessingOperation{timer_pid: timer_pid} = List.first(terminated)
+
+    if timer_pid do
+      :erlang.cancel_timer(timer_pid)
     end
 
     # Should this overwrite state.error?
@@ -174,17 +226,19 @@ defmodule DepMulti.Worker do
 
     if Enum.empty?(state.processing) do
       GenServer.cast(
-        state.pid,
+        state.server_pid,
         {:response, state.ref, {:terminate, operation_name, reason, state.success}}
       )
 
       {:stop, :normal, state}
     else
-      if state.shutdown do
-        Enum.each(state.processing, fn {pid, _operation} ->
-          GenServer.stop(pid, :shutdown)
-        end)
-      end
+      # If a runner encounters an exception, kill everything
+      # if state.shutdown do
+      Enum.each(state.processing, fn {pid, _operation} ->
+        GenServer.stop(pid, :shutdown)
+      end)
+
+      # end
 
       {:noreply, state}
     end
@@ -194,12 +248,23 @@ defmodule DepMulti.Worker do
     :ok
   end
 
-  def terminate(reason, %{pid: pid, ref: ref, processing: processing, success: success}) do
-    Enum.each(processing, fn {pid, _operation} ->
-      GenServer.stop(pid, :shutdown)
+  def terminate(reason, %{
+        server_pid: server_pid,
+        ref: ref,
+        processing: processing,
+        success: success
+      }) do
+    Enum.each(processing, fn %DepMulti.ProcessingOperation{runner_pid: runner_pid} ->
+      GenServer.stop(runner_pid, :shutdown)
     end)
 
-    GenServer.cast(pid, {:response, ref, {:terminate, nil, reason, success}})
+    case reason do
+      {:timeout, name} ->
+        GenServer.cast(server_pid, {:response, ref, {:terminate, name, :timeout, success}})
+
+      _ ->
+        GenServer.cast(server_pid, {:response, ref, {:terminate, nil, reason, success}})
+    end
 
     :ok
   end
