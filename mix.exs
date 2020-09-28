@@ -1,13 +1,25 @@
 defmodule DepMulti.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @url "https://github.com/annkissam/dep_multi"
+  @maintainers [
+    "Eric Sullivan"
+  ]
+
   def project do
     [
       app: :dep_multi,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      description: "Ecto.Multi + Task.async",
+      package: package(),
+      source_url: @url,
+      homepage_url: @url,
+      docs: docs(),
+      aliases: aliases()
     ]
   end
 
@@ -25,5 +37,31 @@ defmodule DepMulti.MixProject do
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]
+  end
+
+  def docs do
+    [
+      extras: ["README.md", "CHANGELOG.md"],
+      source_ref: "v#{@version}"
+    ]
+  end
+
+  defp package do
+    [
+      name: :dep_multi,
+      maintainers: @maintainers,
+      licenses: ["MIT"],
+      links: %{github: @url},
+      files: ["lib", "priv", "mix.exs", "README*", "LICENSE*", "CHANGELOG.md"]
+    ]
+  end
+
+  defp aliases do
+    [publish: ["hex.publish", &git_tag/1]]
+  end
+
+  defp git_tag(_args) do
+    System.cmd("git", ["tag", "v" <> Mix.Project.config()[:version]])
+    System.cmd("git", ["push", "--tags"])
   end
 end
