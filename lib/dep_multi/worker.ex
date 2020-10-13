@@ -193,7 +193,7 @@ defmodule DepMulti.Worker do
     else
       if state.shutdown do
         Enum.each(state.processing, fn {pid, _operation} ->
-          GenServer.stop(pid, :shutdown)
+          GenServer.stop(pid, :shutdown, 5000)
         end)
       end
 
@@ -235,7 +235,7 @@ defmodule DepMulti.Worker do
       # If a runner encounters an exception, kill everything
       # if state.shutdown do
       Enum.each(state.processing, fn {pid, _operation} ->
-        GenServer.stop(pid, :shutdown)
+        GenServer.stop(pid, :shutdown, 5000)
       end)
 
       # end
@@ -255,7 +255,7 @@ defmodule DepMulti.Worker do
         success: success
       }) do
     Enum.each(processing, fn %DepMulti.ProcessingOperation{runner_pid: runner_pid} ->
-      GenServer.stop(runner_pid, :shutdown)
+      GenServer.stop(runner_pid, :shutdown, 5000)
     end)
 
     case reason do
