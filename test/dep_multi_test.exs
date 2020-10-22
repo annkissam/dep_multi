@@ -127,7 +127,7 @@ defmodule DepMultiTest do
                Counter.add(counter, "1")
              end)
              |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
-               :timer.sleep(100)
+               # :timer.sleep(100)
                Counter.add(counter, "ERROR")
              end)
              |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
@@ -162,7 +162,7 @@ defmodule DepMultiTest do
                Counter.add(counter, "1")
              end)
              |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
-               :timer.sleep(100)
+               # :timer.sleep(100)
                Counter.add(counter, "EXCEPTION")
              end)
              |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
