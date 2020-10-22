@@ -14,7 +14,7 @@ defmodule DepMulti.RunnerSupervisor do
       id: DepMulti.Runner,
       start: {DepMulti.Runner, :start_link, [[worker_pid, name, operation, changes]]},
       restart: :temporary,
-      # shutdown: :brutal_kill
+      shutdown: :brutal_kill
     }
 
     DynamicSupervisor.start_child(__MODULE__, spec)

@@ -119,7 +119,7 @@ defmodule DepMultiTest do
     assert Counter.list(counter) == []
   end
 
-  test "handles errors", %{counter: counter} do
+  test "handles errors (before worker finishes)", %{counter: counter} do
     assert {:error, :step_2a, "Error thrown", changes} =
              DepMulti.new()
              |> DepMulti.run(:step_1, [], fn _ ->
@@ -127,7 +127,7 @@ defmodule DepMultiTest do
                Counter.add(counter, "1")
              end)
              |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
-               # :timer.sleep(100)
+               # :timer.sleep(150)
                Counter.add(counter, "ERROR")
              end)
              |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
@@ -154,7 +154,42 @@ defmodule DepMultiTest do
     assert Counter.list(counter) == ["4", "1", "1-2B"]
   end
 
-  test "handles exceptions", %{counter: counter} do
+  test "handles errors (after worker finishes)", %{counter: counter} do
+    assert {:error, :step_2a, "Error thrown", changes} =
+             DepMulti.new()
+             |> DepMulti.run(:step_1, [], fn _ ->
+               :timer.sleep(100)
+               Counter.add(counter, "1")
+             end)
+             |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
+               :timer.sleep(150)
+               Counter.add(counter, "ERROR")
+             end)
+             |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
+               counter,
+               :step_1,
+               "2B"
+             ])
+             |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
+                                                                                 step_1: _,
+                                                                                 step_2a: _,
+                                                                                 step_2b: _
+                                                                               } ->
+               :timer.sleep(100)
+               Counter.add(counter, "3")
+             end)
+             |> DepMulti.run(:step_4, [], fn _ ->
+               :timer.sleep(50)
+               Counter.add(counter, "4")
+             end)
+             |> DepMulti.execute()
+
+    assert changes == %{step_1: "1", step_2b: "1-2B", step_4: "4"}
+
+    assert Counter.list(counter) == ["4", "1", "1-2B"]
+  end
+
+  test "handles exceptions (before worker finishes)", %{counter: counter} do
     assert {:terminate, :step_2a, {%RuntimeError{message: "Exception Thrown"}, _}, changes} =
              DepMulti.new()
              |> DepMulti.run(:step_1, [], fn _ ->
@@ -162,7 +197,42 @@ defmodule DepMultiTest do
                Counter.add(counter, "1")
              end)
              |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
-               # :timer.sleep(100)
+               # :timer.sleep(150)
+               Counter.add(counter, "EXCEPTION")
+             end)
+             |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
+               counter,
+               :step_1,
+               "2B"
+             ])
+             |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
+                                                                                 step_1: _,
+                                                                                 step_2a: _,
+                                                                                 step_2b: _
+                                                                               } ->
+               :timer.sleep(100)
+               Counter.add(counter, "3")
+             end)
+             |> DepMulti.run(:step_4, [], fn _ ->
+               :timer.sleep(50)
+               Counter.add(counter, "4")
+             end)
+             |> DepMulti.execute()
+
+    assert changes == %{step_1: "1", step_2b: "1-2B", step_4: "4"}
+
+    assert Counter.list(counter) == ["4", "1", "1-2B"]
+  end
+
+  test "handles exceptions (after worker finishes)", %{counter: counter} do
+    assert {:terminate, :step_2a, {%RuntimeError{message: "Exception Thrown"}, _}, changes} =
+             DepMulti.new()
+             |> DepMulti.run(:step_1, [], fn _ ->
+               :timer.sleep(100)
+               Counter.add(counter, "1")
+             end)
+             |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
+               :timer.sleep(150)
                Counter.add(counter, "EXCEPTION")
              end)
              |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [

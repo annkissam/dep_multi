@@ -110,6 +110,10 @@ defmodule DepMulti.Worker do
       %DepMulti.ProcessingOperation{operation: %DepMulti.Operation{name: name}} =
         List.first(timed_out)
 
+      # state =
+      #   state
+      #   |> Map.put(:timeout, true)
+
       {:stop, {:timeout, name}, state}
     end
   end
@@ -137,7 +141,7 @@ defmodule DepMulti.Worker do
       |> Map.put(:success, success)
       |> Map.put(:processing, processing)
 
-    if Enum.empty?(state.processing) && Enum.empty?(state.blocked) do
+    if Enum.empty?(state.processing) do
       case state.error do
         {type, failed_operation_name, failed_operation_result} ->
           GenServer.cast(
@@ -146,11 +150,18 @@ defmodule DepMulti.Worker do
              {type, failed_operation_name, failed_operation_result, state.success}}
           )
 
+          {:stop, :normal, state}
         nil ->
-          GenServer.cast(state.server_pid, {:response, state.ref, {:ok, state.success}})
-      end
+          if Enum.empty?(state.blocked) do
+            GenServer.cast(state.server_pid, {:response, state.ref, {:ok, state.success}})
 
-      {:stop, :normal, state}
+            {:stop, :normal, state}
+          else
+            send(self(), :run)
+
+            {:noreply, state}
+          end
+      end
     else
       unless state.error do
         send(self(), :run)
@@ -233,29 +244,11 @@ defmodule DepMulti.Worker do
 
       {:stop, :normal, state}
     else
-      IO.puts("-----------------------\n")
-      IO.puts("DONE1")
-      IO.puts("-----------------------\n")
-
       # If a runner encounters an exception, kill everything
       Enum.each(state.processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
-        IO.puts("-----------------------\n")
-        IO.puts("DONE2")
-        IO.puts("-----------------------\n")
-
-        DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
-
-
         # GenServer.stop(pid, :shutdown, 5000)
-
-        IO.puts("-----------------------\n")
-        IO.puts("DONE3")
-        IO.puts("-----------------------\n")
+        DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
       end)
-
-      IO.puts("-----------------------\n")
-      IO.puts("DONE4")
-      IO.puts("-----------------------\n")
 
       {:noreply, state}
     end
@@ -271,8 +264,8 @@ defmodule DepMulti.Worker do
         processing: processing,
         success: success
       }) do
-    Enum.each(processing, fn %DepMulti.ProcessingOperation{runner_pid: runner_pid} ->
-      # GenServer.stop(runner_pid, :shutdown, 5000)
+    Enum.each(processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
+      # GenServer.stop(pid, :shutdown, 5000)
       DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
     end)
 
