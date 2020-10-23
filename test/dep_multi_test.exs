@@ -22,6 +22,7 @@ defmodule DepMultiTest do
     end
 
     def fetch(map, server, key, value) do
+      # :timer.sleep(1000)
       GenServer.call(server, {:fetch, map, key, value})
     end
 

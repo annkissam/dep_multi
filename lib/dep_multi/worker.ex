@@ -207,9 +207,17 @@ defmodule DepMulti.Worker do
           # GenServer.stop(pid, :shutdown, 5000)
           DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
         end)
-      end
 
-      {:noreply, state}
+        GenServer.cast(
+          state.server_pid,
+          {:response, state.ref,
+           {:error, operation_name, error, state.success}}
+        )
+
+        {:stop, :normal, state}
+      else
+        {:noreply, state}
+      end
     end
   end
 
@@ -250,7 +258,13 @@ defmodule DepMulti.Worker do
         DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
       end)
 
-      {:noreply, state}
+      GenServer.cast(
+        state.server_pid,
+        {:response, state.ref,
+         {:terminate, operation_name, reason, state.success}}
+      )
+
+      {:stop, :normal, state}
     end
   end
 
