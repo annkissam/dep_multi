@@ -151,6 +151,7 @@ defmodule DepMulti.Worker do
           )
 
           {:stop, :normal, state}
+
         nil ->
           if Enum.empty?(state.blocked) do
             GenServer.cast(state.server_pid, {:response, state.ref, {:ok, state.success}})
@@ -210,8 +211,7 @@ defmodule DepMulti.Worker do
 
         GenServer.cast(
           state.server_pid,
-          {:response, state.ref,
-           {:error, operation_name, error, state.success}}
+          {:response, state.ref, {:error, operation_name, error, state.success}}
         )
 
         {:stop, :normal, state}
@@ -260,8 +260,7 @@ defmodule DepMulti.Worker do
 
       GenServer.cast(
         state.server_pid,
-        {:response, state.ref,
-         {:terminate, operation_name, reason, state.success}}
+        {:response, state.ref, {:terminate, operation_name, reason, state.success}}
       )
 
       {:stop, :normal, state}
