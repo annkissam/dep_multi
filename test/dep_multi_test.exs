@@ -21,8 +21,11 @@ defmodule DepMultiTest do
       GenServer.call(server, {:add, str})
     end
 
-    def fetch(map, server, key, value) do
-      # :timer.sleep(1000)
+    def fetch(map, server, key, value, sleep \\ nil) do
+      if sleep do
+        :timer.sleep(sleep)
+      end
+
       GenServer.call(server, {:fetch, map, key, value})
     end
 
@@ -134,7 +137,8 @@ defmodule DepMultiTest do
              |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
                counter,
                :step_1,
-               "2B"
+               "2B",
+               100
              ])
              |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
                                                                                  step_1: _,
@@ -153,6 +157,42 @@ defmodule DepMultiTest do
     assert changes == %{step_1: "1", step_2b: "1-2B", step_4: "4"}
 
     assert Counter.list(counter) == ["4", "1", "1-2B"]
+  end
+
+  test "handles errors (before worker finishes w/ shutdown)", %{counter: counter} do
+    assert {:error, :step_2a, "Error thrown", changes} =
+             DepMulti.new()
+             |> DepMulti.run(:step_1, [], fn _ ->
+               :timer.sleep(100)
+               Counter.add(counter, "1")
+             end)
+             |> DepMulti.run(:step_2a, [dependencies: [:step_1]], fn _changes ->
+               # :timer.sleep(150)
+               Counter.add(counter, "ERROR")
+             end)
+             |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
+               counter,
+               :step_1,
+               "2B",
+               100
+             ])
+             |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
+                                                                                 step_1: _,
+                                                                                 step_2a: _,
+                                                                                 step_2b: _
+                                                                               } ->
+               :timer.sleep(100)
+               Counter.add(counter, "3")
+             end)
+             |> DepMulti.run(:step_4, [], fn _ ->
+               :timer.sleep(50)
+               Counter.add(counter, "4")
+             end)
+             |> DepMulti.execute(shutdown: true)
+
+    assert changes == %{step_1: "1", step_4: "4"}
+
+    assert Counter.list(counter) == ["4", "1"]
   end
 
   test "handles errors (after worker finishes)", %{counter: counter} do
@@ -204,7 +244,8 @@ defmodule DepMultiTest do
              |> DepMulti.run(:step_2b, [dependencies: [:step_1]], Counter, :fetch, [
                counter,
                :step_1,
-               "2B"
+               "2B",
+               100
              ])
              |> DepMulti.run(:step_3, [dependencies: [:step_2a, :step_2b]], fn %{
                                                                                  step_1: _,
@@ -220,9 +261,9 @@ defmodule DepMultiTest do
              end)
              |> DepMulti.execute()
 
-    assert changes == %{step_1: "1", step_2b: "1-2B", step_4: "4"}
+    assert changes == %{step_1: "1", step_4: "4"}
 
-    assert Counter.list(counter) == ["4", "1", "1-2B"]
+    assert Counter.list(counter) == ["4", "1"]
   end
 
   test "handles exceptions (after worker finishes)", %{counter: counter} do
