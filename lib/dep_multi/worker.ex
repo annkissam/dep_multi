@@ -110,6 +110,10 @@ defmodule DepMulti.Worker do
       %DepMulti.ProcessingOperation{operation: %DepMulti.Operation{name: name}} =
         List.first(timed_out)
 
+      # state =
+      #   state
+      #   |> Map.put(:timeout, true)
+
       {:stop, {:timeout, name}, state}
     end
   end
@@ -137,7 +141,7 @@ defmodule DepMulti.Worker do
       |> Map.put(:success, success)
       |> Map.put(:processing, processing)
 
-    if Enum.empty?(state.processing) && Enum.empty?(state.blocked) do
+    if Enum.empty?(state.processing) do
       case state.error do
         {type, failed_operation_name, failed_operation_result} ->
           GenServer.cast(
@@ -146,11 +150,19 @@ defmodule DepMulti.Worker do
              {type, failed_operation_name, failed_operation_result, state.success}}
           )
 
-        nil ->
-          GenServer.cast(state.server_pid, {:response, state.ref, {:ok, state.success}})
-      end
+          {:stop, :normal, state}
 
-      {:stop, :normal, state}
+        nil ->
+          if Enum.empty?(state.blocked) do
+            GenServer.cast(state.server_pid, {:response, state.ref, {:ok, state.success}})
+
+            {:stop, :normal, state}
+          else
+            send(self(), :run)
+
+            {:noreply, state}
+          end
+      end
     else
       unless state.error do
         send(self(), :run)
@@ -192,12 +204,20 @@ defmodule DepMulti.Worker do
       {:stop, :normal, state}
     else
       if state.shutdown do
-        Enum.each(state.processing, fn {pid, _operation} ->
-          GenServer.stop(pid, :shutdown, 5000)
+        Enum.each(state.processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
+          # GenServer.stop(pid, :shutdown, 5000)
+          DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
         end)
-      end
 
-      {:noreply, state}
+        GenServer.cast(
+          state.server_pid,
+          {:response, state.ref, {:error, operation_name, error, state.success}}
+        )
+
+        {:stop, :normal, state}
+      else
+        {:noreply, state}
+      end
     end
   end
 
@@ -233,14 +253,17 @@ defmodule DepMulti.Worker do
       {:stop, :normal, state}
     else
       # If a runner encounters an exception, kill everything
-      # if state.shutdown do
-      Enum.each(state.processing, fn {pid, _operation} ->
-        GenServer.stop(pid, :shutdown, 5000)
+      Enum.each(state.processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
+        # GenServer.stop(pid, :shutdown, 5000)
+        DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
       end)
 
-      # end
+      GenServer.cast(
+        state.server_pid,
+        {:response, state.ref, {:terminate, operation_name, reason, state.success}}
+      )
 
-      {:noreply, state}
+      {:stop, :normal, state}
     end
   end
 
@@ -254,8 +277,9 @@ defmodule DepMulti.Worker do
         processing: processing,
         success: success
       }) do
-    Enum.each(processing, fn %DepMulti.ProcessingOperation{runner_pid: runner_pid} ->
-      GenServer.stop(runner_pid, :shutdown, 5000)
+    Enum.each(processing, fn %DepMulti.ProcessingOperation{runner_pid: pid} ->
+      # GenServer.stop(pid, :shutdown, 5000)
+      DynamicSupervisor.terminate_child(DepMulti.RunnerSupervisor, pid)
     end)
 
     case reason do
