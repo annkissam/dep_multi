@@ -1,3 +1,6 @@
+# v 0.1.3 (2021-12-14)
+* [PR#6](https://github.com/annkissam/dep_multi/pull/7) handle an empty list of operations
+
 # v 0.1.2 (2020-10-22)
 * [PR#6](https://github.com/annkissam/dep_multi/pull/6) correctly handle exceptions
 
