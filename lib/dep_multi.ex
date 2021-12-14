@@ -145,6 +145,10 @@ defmodule DepMulti do
   def execute(multi, opts \\ []) do
     operations = Enum.reverse(multi.operations)
 
-    DepMulti.Server.execute(operations, opts)
+    if Enum.empty?(operations) do
+      {:ok, %{}}
+    else
+      DepMulti.Server.execute(operations, opts)
+    end
   end
 end
