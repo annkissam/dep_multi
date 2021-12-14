@@ -62,6 +62,14 @@ defmodule DepMultiTest do
     [counter: counter]
   end
 
+  test "processes empty list" do
+    {:ok, results} =
+      DepMulti.new()
+      |> DepMulti.execute()
+
+    assert results == %{}
+  end
+
   test "processes dependencies", %{counter: counter} do
     {:ok, results} =
       DepMulti.new()
